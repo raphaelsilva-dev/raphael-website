@@ -182,7 +182,7 @@ logger.error = (msg, options) => {
 }
 
 export default defineConfig({
-	base: '/raphael-website/',
+	base: '/',
 	customLogger: logger,
 	plugins: [react(), addTransformIndexHtml()],
 	server: {
