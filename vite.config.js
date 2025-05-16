@@ -182,7 +182,7 @@ logger.error = (msg, options) => {
 }
 
 export default defineConfig({
-	base: '/devraphael.com/',
+	base: '/devraphael/',
 	customLogger: logger,
 	plugins: [react(), addTransformIndexHtml()],
 	server: {
