@@ -1,32 +1,8 @@
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<link rel="icon" type="image/svg+xml" href="/vite.svg" />
-		<meta name="generator" content="Hostinger Horizons" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Home</title>
-		<script type="module" crossorigin src="/assets/index-1bf013ca.js"></script>
-		<link rel="stylesheet" href="/assets/index-c8c56bde.css">
-		<script type="module">
-window.onerror = (message, source, lineno, colno, errorObj) => {
-	const errorDetails = errorObj ? JSON.stringify({
-		name: errorObj.name,
-		message: errorObj.message,
-		stack: errorObj.stack,
-		source,
-		lineno,
-		colno,
-	}) : null;
+import path from 'node:path';
+import react from '@vitejs/plugin-react';
+import { createLogger, defineConfig } from 'vite';
 
-	window.parent.postMessage({
-		type: 'horizons-runtime-error',
-		message,
-		error: errorDetails
-	}, '*');
-};
-</script>
-		<script type="module">
+const configHorizonsViteErrorHandler = `
 const observer = new MutationObserver((mutations) => {
 	for (const mutation of mutations) {
 		for (const addedNode of mutation.addedNodes) {
@@ -71,8 +47,28 @@ function handleViteOverlay(node) {
 		}, '*');
 	}
 }
-</script>
-		<script type="module">
+`;
+
+const configHorizonsRuntimeErrorHandler = `
+window.onerror = (message, source, lineno, colno, errorObj) => {
+	const errorDetails = errorObj ? JSON.stringify({
+		name: errorObj.name,
+		message: errorObj.message,
+		stack: errorObj.stack,
+		source,
+		lineno,
+		colno,
+	}) : null;
+
+	window.parent.postMessage({
+		type: 'horizons-runtime-error',
+		message,
+		error: errorDetails
+	}, '*');
+};
+`;
+
+const configHorizonsConsoleErrroHandler = `
 const originalConsoleError = console.error;
 console.error = function(...args) {
 	originalConsoleError.apply(console, args);
@@ -82,7 +78,7 @@ console.error = function(...args) {
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
 		if (arg instanceof Error) {
-			errorString = arg.stack || `${arg.name}: ${arg.message}`;
+			errorString = arg.stack || \`\${arg.name}: \${arg.message}\`;
 			break;
 		}
 	}
@@ -96,8 +92,9 @@ console.error = function(...args) {
 		error: errorString
 	}, '*');
 };
-</script>
-		<script type="module">
+`;
+
+const configWindowFetchMonkeyPatch = `
 const originalFetch = window.fetch;
 
 window.fetch = function(...args) {
@@ -121,23 +118,84 @@ window.fetch = function(...args) {
 					const responseClone = response.clone();
 					const errorFromRes = await responseClone.text();
 					const requestUrl = response.url;
-					console.error(`Fetch error from ${requestUrl}: ${errorFromRes}`);
+					console.error(\`Fetch error from \${requestUrl}: \${errorFromRes}\`);
 			}
 
 			return response;
 		})
 		.catch(error => {
-			if (!url.match(/.html?$/i)) {
+			if (!url.match(/\.html?$/i)) {
 				console.error(error);
 			}
 
 			throw error;
 		});
 };
-</script>
-	</head>
-	<body>
-		<div id="root"></div>
-		
-	</body>
-</html>
+`;
+
+const addTransformIndexHtml = {
+	name: 'add-transform-index-html',
+	transformIndexHtml(html) {
+		return {
+			html,
+			tags: [
+				{
+					tag: 'script',
+					attrs: { type: 'module' },
+					children: configHorizonsRuntimeErrorHandler,
+					injectTo: 'head',
+				},
+				{
+					tag: 'script',
+					attrs: { type: 'module' },
+					children: configHorizonsViteErrorHandler,
+					injectTo: 'head',
+				},
+				{
+					tag: 'script',
+					attrs: {type: 'module'},
+					children: configHorizonsConsoleErrroHandler,
+					injectTo: 'head',
+				},
+				{
+					tag: 'script',
+					attrs: { type: 'module' },
+					children: configWindowFetchMonkeyPatch,
+					injectTo: 'head',
+				},
+			],
+		};
+	},
+};
+
+console.warn = () => {};
+
+const logger = createLogger()
+const loggerError = logger.error
+
+logger.error = (msg, options) => {
+	if (options?.error?.toString().includes('CssSyntaxError: [postcss]')) {
+		return;
+	}
+
+	loggerError(msg, options);
+}
+
+export default defineConfig({
+	base: '/',
+	customLogger: logger,
+	plugins: [react(), addTransformIndexHtml],
+	server: {
+		cors: true,
+		headers: {
+			'Cross-Origin-Embedder-Policy': 'credentialless',
+		},
+		allowedHosts: true,
+	},
+	resolve: {
+		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
+		alias: {
+			'@': path.resolve(__dirname, './src'),
+		},
+	},
+});
